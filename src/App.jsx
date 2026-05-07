@@ -3,7 +3,6 @@ import { useState, useMemo, useEffect } from "react";
 const SUPABASE_URL = "https://vsofbpxeohmpcphkqhay.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZzb2ZicHhlb2htcGNwaGtxaGF5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNTU2NTYsImV4cCI6MjA5MzYzMTY1Nn0.0E8cIcae7VRIzhtc4xEO0-_SKnaeQfINuIwhaCdiN-M";
 
-
 const api = async (path, options = {}) => {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     headers: {
@@ -21,6 +20,7 @@ const api = async (path, options = {}) => {
 };
 
 const CATEGORIES = ["세제/청소", "식품/간식", "음료/유제품", "위생/욕실", "주방용품", "기타"];
+const MEMBERS = ["아빠", "엄마", "딸내미1", "딸내미2", "딸내미3"];
 const formatDate = (d) => (d || "").replace(/-/g, ". ");
 const calcUnit = (rec) => {
   const paid = rec.original_price - rec.coupon_discount - rec.point_benefit;
@@ -29,7 +29,7 @@ const calcUnit = (rec) => {
 const formatWon = (n) => (n || 0).toLocaleString("ko-KR") + "원";
 
 function Badge({ children, color }) {
-  const colors = { green: "bg-emerald-100 text-emerald-700", amber: "bg-amber-100 text-amber-700", gray: "bg-stone-100 text-stone-500" };
+  const colors = { green: "bg-emerald-100 text-emerald-700", amber: "bg-amber-100 text-amber-700", gray: "bg-stone-100 text-stone-500", purple: "bg-purple-100 text-purple-700" };
   return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${colors[color] || colors.gray}`}>{children}</span>;
 }
 
@@ -47,6 +47,7 @@ function RecordRow({ rec, isLatest, isBest, onDelete }) {
         <div className="flex flex-col items-end gap-1">
           {isLatest && <Badge color="amber">최근</Badge>}
           {isBest && <Badge color="green">최저단가</Badge>}
+          {rec.buyer && <Badge color="purple">{rec.buyer}</Badge>}
           <button onClick={() => onDelete(rec.id)} className="text-stone-300 hover:text-rose-400 text-xs mt-1">삭제</button>
         </div>
       </div>
@@ -56,7 +57,13 @@ function RecordRow({ rec, isLatest, isBest, onDelete }) {
         <div className="bg-stone-50 rounded-xl p-2"><p className="text-[10px] text-stone-400 mb-0.5">쿠폰할인</p><p className="text-sm font-semibold text-emerald-600">{rec.coupon_discount > 0 ? "-" + formatWon(rec.coupon_discount) : "없음"}</p></div>
         <div className="bg-stone-50 rounded-xl p-2"><p className="text-[10px] text-stone-400 mb-0.5">포인트</p><p className="text-sm font-semibold text-sky-600">{rec.point_benefit > 0 ? formatWon(rec.point_benefit) + " 적립" : "없음"}</p></div>
       </div>
-      <div className="mt-3 bg-stone-800 rounded-xl p-3 flex items-center justify-between">
+      {rec.purchase_url && (
+        <a href={rec.purchase_url} target="_blank" rel="noopener noreferrer"
+          className="mt-3 flex items-center justify-center gap-2 w-full py-2.5 bg-sky-50 border border-sky-200 rounded-xl text-sky-600 text-sm font-semibold hover:bg-sky-100 transition-colors">
+          🔗 구매 링크 열기
+        </a>
+      )}
+      <div className="mt-2 bg-stone-800 rounded-xl p-3 flex items-center justify-between">
         <span className="text-xs text-stone-300">{rec.quantity}{rec.unit}당 단가</span>
         <span className="text-lg font-black text-white">{formatWon(unitPrice)}<span className="text-xs text-stone-400 ml-1">/{rec.unit}</span></span>
       </div>
@@ -104,7 +111,7 @@ function ItemCard({ item, onAddRecord, onDeleteRecord, onDeleteItem }) {
   );
 }
 
-const emptyForm = { date: new Date().toISOString().slice(0, 10), store: "", originalPrice: "", couponDiscount: "", pointBenefit: "", quantity: "", unit: "개", note: "" };
+const emptyForm = { date: new Date().toISOString().slice(0, 10), store: "", buyer: "엄마", originalPrice: "", couponDiscount: "", pointBenefit: "", quantity: "", unit: "개", note: "", purchaseUrl: "" };
 
 function AddRecordModal({ itemName, onClose, onSave, saving }) {
   const [form, setForm] = useState(emptyForm);
@@ -122,8 +129,10 @@ function AddRecordModal({ itemName, onClose, onSave, saving }) {
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-2">
             <div><label className="text-xs text-stone-400 font-semibold">구매일</label><input type="date" value={form.date} onChange={(e) => set("date", e.target.value)} className="w-full mt-1 border border-stone-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-amber-400" /></div>
-            <div><label className="text-xs text-stone-400 font-semibold">구매처</label><input placeholder="코스트코" value={form.store} onChange={(e) => set("store", e.target.value)} className="w-full mt-1 border border-stone-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-amber-400" /></div>
+            <div><label className="text-xs text-stone-400 font-semibold">구매자</label><select value={form.buyer} onChange={(e) => set("buyer", e.target.value)} className="w-full mt-1 border border-stone-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-amber-400">{MEMBERS.map((m) => <option key={m}>{m}</option>)}</select></div>
           </div>
+          <div><label className="text-xs text-stone-400 font-semibold">구매처</label><input placeholder="코스트코" value={form.store} onChange={(e) => set("store", e.target.value)} className="w-full mt-1 border border-stone-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-amber-400" /></div>
+          <div><label className="text-xs text-stone-400 font-semibold">구매 링크 (선택)</label><input placeholder="https://..." value={form.purchaseUrl} onChange={(e) => set("purchaseUrl", e.target.value)} className="w-full mt-1 border border-stone-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-amber-400" /></div>
           <div><label className="text-xs text-stone-400 font-semibold">원가 (할인 전)</label><input type="number" placeholder="0" value={form.originalPrice} onChange={(e) => set("originalPrice", e.target.value)} className="w-full mt-1 border border-stone-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-amber-400" /></div>
           <div className="grid grid-cols-2 gap-2">
             <div><label className="text-xs text-stone-400 font-semibold">쿠폰 할인액</label><input type="number" placeholder="0" value={form.couponDiscount} onChange={(e) => set("couponDiscount", e.target.value)} className="w-full mt-1 border border-stone-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-amber-400" /></div>
@@ -212,7 +221,7 @@ export default function App() {
     try {
       const [newRec] = await api("records?select=*", {
         method: "POST",
-        body: JSON.stringify({ item_id: itemId, date: form.date, store: form.store, original_price: Number(form.originalPrice), coupon_discount: Number(form.couponDiscount) || 0, point_benefit: Number(form.pointBenefit) || 0, quantity: Number(form.quantity), unit: form.unit, note: form.note }),
+        body: JSON.stringify({ item_id: itemId, date: form.date, store: form.store, buyer: form.buyer, purchase_url: form.purchaseUrl, original_price: Number(form.originalPrice), coupon_discount: Number(form.couponDiscount) || 0, point_benefit: Number(form.pointBenefit) || 0, quantity: Number(form.quantity), unit: form.unit, note: form.note }),
       });
       setItems((prev) => prev.map((it) => it.id === itemId ? { ...it, records: [...it.records, newRec] } : it));
       setAddRecordFor(null);
