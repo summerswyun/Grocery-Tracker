@@ -10,6 +10,7 @@ const api = async (path, options = {}) => {
       Authorization: `Bearer ${SUPABASE_KEY}`,
       "Content-Type": "application/json",
       ...(options.method === "POST" ? { Prefer: "return=representation" } : {}),
+      ...(options.method === "PATCH" ? { Prefer: "return=representation" } : {}),
       ...options.headers,
     },
     ...options,
@@ -33,7 +34,7 @@ function Badge({ children, color }) {
   return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${colors[color] || colors.gray}`}>{children}</span>;
 }
 
-function RecordRow({ rec, isLatest, isBest, onDelete }) {
+function RecordRow({ rec, isLatest, isBest, onDelete, onEdit }) {
   const unitPrice = calcUnit(rec);
   const paid = rec.original_price - rec.coupon_discount - rec.point_benefit;
   return (
@@ -48,7 +49,10 @@ function RecordRow({ rec, isLatest, isBest, onDelete }) {
           {isLatest && <Badge color="amber">최근</Badge>}
           {isBest && <Badge color="green">최저단가</Badge>}
           {rec.buyer && <Badge color="purple">{rec.buyer}</Badge>}
-          <button onClick={() => onDelete(rec.id)} className="text-stone-300 hover:text-rose-400 text-xs mt-1">삭제</button>
+          <div className="flex gap-2 mt-1">
+            <button onClick={() => onEdit(rec)} className="text-sky-400 hover:text-sky-600 text-xs">수정</button>
+            <button onClick={() => onDelete(rec.id)} className="text-stone-300 hover:text-rose-400 text-xs">삭제</button>
+          </div>
         </div>
       </div>
       <div className="grid grid-cols-2 gap-2 mt-3">
@@ -71,7 +75,7 @@ function RecordRow({ rec, isLatest, isBest, onDelete }) {
   );
 }
 
-function ItemCard({ item, onAddRecord, onDeleteRecord, onDeleteItem }) {
+function ItemCard({ item, onAddRecord, onDeleteRecord, onDeleteItem, onEditRecord }) {
   const [expanded, setExpanded] = useState(false);
   const records = item.records || [];
   const sorted = [...records].sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -99,7 +103,7 @@ function ItemCard({ item, onAddRecord, onDeleteRecord, onDeleteItem }) {
         <div className="px-4 pb-4 space-y-3 border-t border-stone-100 pt-4">
           {sorted.length === 0 && <p className="text-center text-stone-400 text-sm py-4">아직 기록이 없어요</p>}
           {sorted.map((rec) => (
-            <RecordRow key={rec.id} rec={rec} isLatest={rec.id === latestId} isBest={rec.id === bestId} onDelete={onDeleteRecord} />
+            <RecordRow key={rec.id} rec={rec} isLatest={rec.id === latestId} isBest={rec.id === bestId} onDelete={onDeleteRecord} onEdit={onEditRecord} />
           ))}
           <button onClick={() => onAddRecord(item.id)} className="w-full mt-2 py-3 rounded-2xl border-2 border-dashed border-stone-300 text-stone-400 text-sm font-semibold hover:border-amber-400 hover:text-amber-500 transition-colors">
             + 새 구매 기록 추가
@@ -111,10 +115,21 @@ function ItemCard({ item, onAddRecord, onDeleteRecord, onDeleteItem }) {
   );
 }
 
-const emptyForm = { date: new Date().toISOString().slice(0, 10), store: "", buyer: "엄마", originalPrice: "", couponDiscount: "", pointBenefit: "", quantity: "", unit: "개", note: "", purchaseUrl: "" };
+const emptyForm = { date: new Date().toISOString().slice(0, 10), store: "", buyer: "딸내미2", originalPrice: "", couponDiscount: "", pointBenefit: "", quantity: "", unit: "개", note: "", purchaseUrl: "" };
 
-function AddRecordModal({ itemName, onClose, onSave, saving }) {
-  const [form, setForm] = useState(emptyForm);
+function RecordModal({ itemName, onClose, onSave, saving, editRec }) {
+  const [form, setForm] = useState(editRec ? {
+    date: editRec.date,
+    store: editRec.store,
+    buyer: editRec.buyer || "딸내미2",
+    originalPrice: String(editRec.original_price),
+    couponDiscount: String(editRec.coupon_discount),
+    pointBenefit: String(editRec.point_benefit),
+    quantity: String(editRec.quantity),
+    unit: editRec.unit,
+    note: editRec.note || "",
+    purchaseUrl: editRec.purchase_url || "",
+  } : emptyForm);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const paid = (Number(form.originalPrice) || 0) - (Number(form.couponDiscount) || 0) - (Number(form.pointBenefit) || 0);
   const unitPrice = form.quantity > 0 ? Math.round(paid / Number(form.quantity)) : 0;
@@ -122,7 +137,7 @@ function AddRecordModal({ itemName, onClose, onSave, saving }) {
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm">
       <div className="bg-white w-full max-w-md rounded-t-3xl p-6 pb-8 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
-          <h2 className="font-black text-stone-900 text-lg">구매 기록 추가</h2>
+          <h2 className="font-black text-stone-900 text-lg">{editRec ? "구매 기록 수정" : "구매 기록 추가"}</h2>
           <button onClick={onClose} className="text-stone-400 text-2xl leading-none">×</button>
         </div>
         <p className="text-sm text-stone-500 -mt-2">{itemName}</p>
@@ -151,7 +166,7 @@ function AddRecordModal({ itemName, onClose, onSave, saving }) {
           </div>
         )}
         <button onClick={() => { if (form.store && form.originalPrice && form.quantity) onSave(form); }} disabled={saving} className="w-full py-4 bg-amber-400 text-stone-900 font-black rounded-2xl text-base hover:bg-amber-500 transition-colors disabled:opacity-50">
-          {saving ? "저장 중..." : "저장하기"}
+          {saving ? "저장 중..." : editRec ? "수정 완료" : "저장하기"}
         </button>
       </div>
     </div>
@@ -185,6 +200,7 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [filterCat, setFilterCat] = useState("전체");
   const [addRecordFor, setAddRecordFor] = useState(null);
+  const [editRec, setEditRec] = useState(null);
   const [showAddItem, setShowAddItem] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -229,6 +245,19 @@ export default function App() {
     finally { setSaving(false); }
   };
 
+  const handleEditRecord = async (form) => {
+    setSaving(true);
+    try {
+      const [updated] = await api(`records?id=eq.${editRec.id}&select=*`, {
+        method: "PATCH",
+        body: JSON.stringify({ date: form.date, store: form.store, buyer: form.buyer, purchase_url: form.purchaseUrl, original_price: Number(form.originalPrice), coupon_discount: Number(form.couponDiscount) || 0, point_benefit: Number(form.pointBenefit) || 0, quantity: Number(form.quantity), unit: form.unit, note: form.note }),
+      });
+      setItems((prev) => prev.map((it) => ({ ...it, records: it.records.map((r) => r.id === editRec.id ? updated : r) })));
+      setEditRec(null);
+    } catch { alert("수정 실패. 다시 시도해주세요."); }
+    finally { setSaving(false); }
+  };
+
   const handleDeleteRecord = async (recordId) => {
     if (!confirm("이 기록을 삭제할까요?")) return;
     try {
@@ -251,13 +280,15 @@ export default function App() {
     return matchCat && matchSearch;
   }), [items, search, filterCat]);
 
+  const editItemName = editRec ? items.find((it) => it.records.some((r) => r.id === editRec.id))?.name : null;
+
   return (
     <div className="min-h-screen bg-stone-50 font-sans">
       <div className="sticky top-0 z-10 bg-white border-b border-stone-100 px-5 pt-6 pb-4 shadow-sm">
         <div className="flex items-center justify-between max-w-md mx-auto">
           <div>
-            <h1 className="text-2xl font-black text-stone-900 tracking-tight">장바구니 📋</h1>
-            <p className="text-xs text-stone-400 mt-0.5">4인 가족 생필품 가격 비교</p>
+            <h1 className="text-2xl font-black text-stone-900 tracking-tight">🛒 장봐요</h1>
+            <p className="text-xs text-stone-400 mt-0.5">우리집 장바구니 기록부</p>
           </div>
           <button onClick={() => setShowAddItem(true)} className="bg-amber-400 text-stone-900 font-black text-sm px-4 py-2 rounded-2xl hover:bg-amber-500 transition-colors shadow-sm">+ 추가</button>
         </div>
@@ -277,10 +308,11 @@ export default function App() {
           <div className="text-center py-16 text-stone-400"><p className="text-4xl mb-3">🛒</p><p className="font-semibold">아직 기록이 없어요</p><p className="text-sm mt-1">+ 추가 버튼으로 시작해보세요</p></div>
         )}
         {!loading && filtered.map((item) => (
-          <ItemCard key={item.id} item={item} onAddRecord={(id) => setAddRecordFor(id)} onDeleteRecord={handleDeleteRecord} onDeleteItem={handleDeleteItem} />
+          <ItemCard key={item.id} item={item} onAddRecord={(id) => setAddRecordFor(id)} onDeleteRecord={handleDeleteRecord} onDeleteItem={handleDeleteItem} onEditRecord={(rec) => setEditRec(rec)} />
         ))}
       </div>
-      {addRecordFor && <AddRecordModal itemName={items.find((it) => it.id === addRecordFor)?.name} onClose={() => setAddRecordFor(null)} onSave={(form) => handleAddRecord(addRecordFor, form)} saving={saving} />}
+      {addRecordFor && <RecordModal itemName={items.find((it) => it.id === addRecordFor)?.name} onClose={() => setAddRecordFor(null)} onSave={(form) => handleAddRecord(addRecordFor, form)} saving={saving} editRec={null} />}
+      {editRec && <RecordModal itemName={editItemName} onClose={() => setEditRec(null)} onSave={handleEditRecord} saving={saving} editRec={editRec} />}
       {showAddItem && <AddItemModal onClose={() => setShowAddItem(false)} onSave={handleAddItem} saving={saving} />}
     </div>
   );
